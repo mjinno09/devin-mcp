@@ -9,6 +9,12 @@ use crate::server::DevinMcpServer;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // --version フラグ対応
+    if std::env::args().any(|a| a == "--version" || a == "-V") {
+        println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
     // ログは必ず stderr へ（stdout は JSON-RPC 専用）
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env().add_directive("devin_mcp=info".parse()?))
