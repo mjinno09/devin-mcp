@@ -1,0 +1,123 @@
+# Builds release artifacts when a version tag (v*) is pushed,
+# then creates a GitHub Release with binaries and install script.
+
+name: Release
+
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - v[0-9]+.*
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Run CI checks before releasing
+  ci:
+    name: CI Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format check
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features
+
+      - name: Unit tests
+        run: cargo test --bin devin-mcp
+
+      - name: Build binary
+        run: cargo build
+
+      - name: Integration tests (mock only)
+        run: cargo test --test integration
+
+  # Build release binaries for each target
+  build:
+    name: Build (${{ matrix.target }})
+    needs: ci
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package binary
+        shell: bash
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          archive="devin-mcp-${tag}-${{ matrix.target }}"
+          mkdir -p "${archive}"
+          cp "target/${{ matrix.target }}/release/devin-mcp" "${archive}/"
+          cp README.md LICENSE "${archive}/"
+          tar czf "${archive}.tar.gz" "${archive}"
+          echo "ARCHIVE=${archive}.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: ${{ env.ARCHIVE }}
+
+  # Create GitHub Release and upload all artifacts
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Prepare install script
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          repo="${GITHUB_REPOSITORY}"
+          cp scripts/installer.sh devin-mcp-installer.sh
+          sed -i "s|__REPO__|${repo}|g" devin-mcp-installer.sh
+          sed -i "s|__TAG__|${tag}|g" devin-mcp-installer.sh
+          chmod +x devin-mcp-installer.sh
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          gh release create "${tag}" \
+            --title "${tag}" \
+            --generate-notes \
+            artifacts/*.tar.gz \
+            devin-mcp-installer.sh

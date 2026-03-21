@@ -1,0 +1,27 @@
+[package]
+name = "devin-mcp"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "MCP server for creating and managing Devin AI sessions from Claude Code, Cursor, and other MCP clients"
+repository = "https://github.com/mjinno09/devin-mcp"
+homepage = "https://github.com/mjinno09/devin-mcp"
+readme = "README.md"
+keywords = ["mcp", "devin", "ai", "claude", "cursor"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+rmcp = { version = "0.16", features = ["server", "transport-io"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = "1"
+reqwest = { version = "0.12", features = ["json"] }
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+wiremock = "0.6"
+tokio = { version = "1", features = ["full", "test-util"] }
+serde_json = "1"
