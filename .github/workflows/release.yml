@@ -1,5 +1,5 @@
-# Builds release artifacts when a version tag (v*) is pushed,
-# then creates a GitHub Release with binaries and install script.
+# Builds release artifacts when a GitHub Release is published,
+# then uploads binaries and install script to the release.
 
 name: Release
 
@@ -7,9 +7,8 @@ permissions:
   contents: write
 
 on:
-  push:
-    tags:
-      - v[0-9]+.*
+  release:
+    types: [published]
 
 env:
   CARGO_TERM_COLOR: always
@@ -65,7 +64,7 @@ jobs:
       - name: Package binary
         shell: bash
         run: |
-          tag="${GITHUB_REF#refs/tags/}"
+          tag="${{ github.event.release.tag_name }}"
           archive="devin-mcp-${tag}-${{ matrix.target }}"
           mkdir -p "${archive}"
           cp "target/${{ matrix.target }}/release/devin-mcp" "${archive}/"
@@ -79,9 +78,9 @@ jobs:
           name: release-${{ matrix.target }}
           path: ${{ env.ARCHIVE }}
 
-  # Create GitHub Release and upload all artifacts
+  # Upload binaries and install script to the GitHub Release
   release:
-    name: Create Release
+    name: Upload Release Assets
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -95,28 +94,18 @@ jobs:
 
       - name: Prepare install script
         run: |
-          tag="${GITHUB_REF#refs/tags/}"
+          tag="${{ github.event.release.tag_name }}"
           repo="${GITHUB_REPOSITORY}"
           cp scripts/installer.sh devin-mcp-installer.sh
           sed -i "s|__REPO__|${repo}|g" devin-mcp-installer.sh
           sed -i "s|__TAG__|${tag}|g" devin-mcp-installer.sh
           chmod +x devin-mcp-installer.sh
 
-      - name: Create GitHub Release
+      - name: Upload Release Assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          tag="${GITHUB_REF#refs/tags/}"
-          if gh release view "${tag}" &>/dev/null; then
-            echo "Release ${tag} already exists, uploading artifacts..."
-            gh release upload "${tag}" --clobber \
-              artifacts/*.tar.gz \
-              devin-mcp-installer.sh
-          else
-            echo "Creating release ${tag}..."
-            gh release create "${tag}" \
-              --title "${tag}" \
-              --generate-notes \
-              artifacts/*.tar.gz \
-              devin-mcp-installer.sh
-          fi
+          tag="${{ github.event.release.tag_name }}"
+          gh release upload "${tag}" --clobber \
+            artifacts/*.tar.gz \
+            devin-mcp-installer.sh
