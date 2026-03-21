@@ -204,21 +204,18 @@ impl DevinMcpServer {
 #[tool_handler]
 impl ServerHandler for DevinMcpServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            instructions: Some(
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_server_info(Implementation::new(
+                env!("CARGO_PKG_NAME"),
+                env!("CARGO_PKG_VERSION"),
+            ))
+            .with_instructions(
                 "Devin AI session manager. Tools:\n\
                  - create_session: Create a new Devin task (returns URL, fire-and-forget)\n\
                  - get_session: Check status of an existing session\n\
                  - list_sessions: Browse recent sessions\n\
-                 - send_message: Send follow-up instructions to a session"
-                    .into(),
-            ),
-            capabilities: ServerCapabilities {
-                tools: Some(ToolsCapability::default()),
-                ..Default::default()
-            },
-            ..Default::default()
-        }
+                 - send_message: Send follow-up instructions to a session",
+            )
     }
 }
 
