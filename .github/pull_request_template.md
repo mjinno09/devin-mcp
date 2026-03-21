@@ -14,6 +14,6 @@ Implementation approach.
 
 - [ ] `cargo fmt` passes
 - [ ] `cargo clippy` passes
-- [ ] `cargo test --lib` passes
+- [ ] `cargo test --bin devin-mcp` passes
 - [ ] Updated README if needed
 - [ ] Updated CHANGELOG if user-facing

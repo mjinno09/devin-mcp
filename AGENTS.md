@@ -30,7 +30,7 @@ devin-mcp is a Rust MCP server that wraps the Devin API. It enables Claude Code,
 ## Commands
 
 - `cargo build` — Build
-- `cargo test --lib` — Unit tests
+- `cargo test --bin devin-mcp` — Unit tests
 - `cargo test --test integration` — Integration tests
 - `cargo fmt --all --check` — Format check
 - `cargo clippy --all-targets` — Lint

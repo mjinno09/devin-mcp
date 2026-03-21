@@ -14,7 +14,7 @@ cargo build
 
 ```sh
 # Unit tests (no API key needed)
-cargo test --lib
+cargo test --bin devin-mcp
 
 # Integration tests — mock only (no API key needed)
 cargo test --test integration
@@ -39,7 +39,7 @@ cargo test
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes
 4. Run `cargo fmt` and `cargo clippy`
-5. Run `cargo test --lib` to ensure unit tests pass
+5. Run `cargo test --bin devin-mcp` to ensure unit tests pass
 6. Commit your changes with a descriptive message
 7. Push to your fork and open a Pull Request
 

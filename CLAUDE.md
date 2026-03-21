@@ -33,7 +33,7 @@ See `docs/architecture.md` for the full architecture overview.
 
 ```sh
 cargo build                    # Build
-cargo test --lib               # Unit tests (wiremock, no API key needed)
+cargo test --bin devin-mcp     # Unit tests (wiremock, no API key needed)
 cargo test --test integration  # Integration tests (mock only)
 DEVIN_API_KEY=xxx cargo test   # All tests including live
 cargo fmt --all --check        # Format check
