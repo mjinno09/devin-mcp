@@ -11,7 +11,6 @@ devin-mcp is a Rust MCP server that wraps the Devin API. It enables Claude Code,
 - reqwest — HTTP client for Devin API
 - tokio — async runtime
 - wiremock — HTTP mocking for tests
-- cargo-dist — release automation
 
 ## Architecture
 
@@ -38,7 +37,6 @@ cargo test --test integration  # Integration tests (mock only)
 DEVIN_API_KEY=xxx cargo test   # All tests including live
 cargo fmt --all --check        # Format check
 cargo clippy --all-targets     # Lint
-cargo dist plan                # Preview release artifacts
 ```
 
 ## Code Conventions

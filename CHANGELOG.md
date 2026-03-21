@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-XX-XX
+## [0.1.0] - 2026-03-21
 
 ### Added
 
@@ -17,4 +17,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `send_message` tool — Send follow-up instructions to a session
 - stdio transport for Claude Code, Cursor, and other MCP clients
 - GitHub Actions CI (fmt, clippy, unit tests, integration tests)
-- cargo-dist based release pipeline with install script
