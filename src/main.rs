@@ -21,7 +21,10 @@ async fn main() -> Result<()> {
     let api_key =
         std::env::var("DEVIN_API_KEY").expect("DEVIN_API_KEY environment variable is required");
 
-    let server = DevinMcpServer::new(api_key);
+    let mut server = DevinMcpServer::new(api_key);
+    if let Ok(base_url) = std::env::var("DEVIN_API_BASE_URL") {
+        server.client.base_url = base_url;
+    }
     let transport = rmcp::transport::io::stdio();
     let handle = server.serve(transport).await?;
 

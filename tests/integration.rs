@@ -2,13 +2,14 @@
 //!
 //! 実際のバイナリを子プロセスとして起動し、
 //! JSON-RPC over stdio で通信する E2E テスト。
-//!
-//! DEVIN_API_KEY が設定されていない場合はスキップされる。
+//! wiremock で Devin API をモックする。
 
 use serde_json::{json, Value};
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 /// JSON-RPC リクエストを送信してレスポンスを受け取るヘルパー
 async fn send_jsonrpc(
@@ -26,8 +27,57 @@ async fn send_jsonrpc(
     serde_json::from_str(&line).unwrap()
 }
 
-fn should_skip() -> bool {
-    std::env::var("DEVIN_API_KEY").is_err()
+/// MCP サーバーを起動し initialize ハンドシェイクを完了するヘルパー
+async fn spawn_and_initialize(
+    mock_server: &MockServer,
+) -> (
+    tokio::process::Child,
+    tokio::process::ChildStdin,
+    BufReader<tokio::process::ChildStdout>,
+) {
+    let binary = env!("CARGO_BIN_EXE_devin-mcp");
+
+    let mut child = Command::new(binary)
+        .env("DEVIN_API_KEY", "test-api-key")
+        .env("DEVIN_API_BASE_URL", mock_server.uri())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("Failed to start MCP server");
+
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+
+    // initialize
+    let _ = send_jsonrpc(
+        &mut stdin,
+        &mut stdout,
+        json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": { "name": "test-client", "version": "0.1.0" }
+            }
+        }),
+    )
+    .await;
+
+    // initialized 通知
+    let notif = serde_json::to_string(&json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+        "params": {}
+    }))
+    .unwrap();
+    stdin.write_all(notif.as_bytes()).await.unwrap();
+    stdin.write_all(b"\n").await.unwrap();
+    stdin.flush().await.unwrap();
+
+    (child, stdin, stdout)
 }
 
 #[tokio::test]
@@ -69,7 +119,6 @@ async fn test_mcp_initialize_handshake() {
     assert_eq!(response["jsonrpc"], "2.0");
     assert_eq!(response["id"], 1);
     assert!(response["result"]["serverInfo"].is_object());
-    // capabilities.tools may be an object or nested differently depending on rmcp version
     assert!(response["result"]["capabilities"].is_object());
 
     // initialized 通知を送信
@@ -117,55 +166,25 @@ async fn test_mcp_initialize_handshake() {
 }
 
 #[tokio::test]
-async fn test_mcp_create_session_live() {
-    if should_skip() {
-        eprintln!("Skipping live test: DEVIN_API_KEY not set");
-        return;
-    }
+async fn test_mcp_create_session() {
+    let mock_server = MockServer::start().await;
 
-    let binary = env!("CARGO_BIN_EXE_devin-mcp");
-    let api_key = std::env::var("DEVIN_API_KEY").unwrap();
+    Mock::given(method("POST"))
+        .and(path("/sessions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "session_id": "devin-integ123",
+            "status": "running",
+            "title": "Integration test session",
+            "created_at": "2025-01-01T00:00:00.000000+00:00",
+            "updated_at": "2025-01-01T00:00:00.000000+00:00",
+            "messages": []
+        })))
+        .mount(&mock_server)
+        .await;
 
-    let mut child = Command::new(binary)
-        .env("DEVIN_API_KEY", &api_key)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("Failed to start MCP server");
+    let (mut child, mut stdin, mut stdout) = spawn_and_initialize(&mock_server).await;
 
-    let mut stdin = child.stdin.take().unwrap();
-    let mut stdout = BufReader::new(child.stdout.take().unwrap());
-
-    // initialize
-    let _ = send_jsonrpc(
-        &mut stdin,
-        &mut stdout,
-        json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": { "name": "test", "version": "0.1.0" }
-            }
-        }),
-    )
-    .await;
-
-    // initialized 通知
-    let notif = serde_json::to_string(&json!({
-        "jsonrpc": "2.0",
-        "method": "notifications/initialized",
-        "params": {}
-    }))
-    .unwrap();
-    stdin.write_all(notif.as_bytes()).await.unwrap();
-    stdin.write_all(b"\n").await.unwrap();
-    stdin.flush().await.unwrap();
-
-    // tools/call で create_session を呼ぶ（実際に Devin セッションが作られる）
+    // tools/call で create_session を呼ぶ
     let call_response = send_jsonrpc(
         &mut stdin,
         &mut stdout,
@@ -191,7 +210,7 @@ async fn test_mcp_create_session_live() {
         content
             .as_str()
             .unwrap()
-            .contains("https://app.devin.ai/sessions/"),
+            .contains("https://app.devin.ai/sessions/devin-integ123"),
         "Response should contain session URL: {}",
         content
     );
@@ -200,52 +219,28 @@ async fn test_mcp_create_session_live() {
 }
 
 #[tokio::test]
-async fn test_mcp_list_sessions_live() {
-    if should_skip() {
-        eprintln!("Skipping live test: DEVIN_API_KEY not set");
-        return;
-    }
+async fn test_mcp_list_sessions() {
+    let mock_server = MockServer::start().await;
 
-    let binary = env!("CARGO_BIN_EXE_devin-mcp");
-    let api_key = std::env::var("DEVIN_API_KEY").unwrap();
+    Mock::given(method("GET"))
+        .and(path("/sessions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "items": [
+                {
+                    "session_id": "devin-list001",
+                    "status": "finished",
+                    "title": "List test session",
+                    "created_at": "2025-01-01T00:00:00.000000+00:00",
+                    "updated_at": "2025-01-01T00:00:00.000000+00:00",
+                    "messages": []
+                }
+            ],
+            "total": 1
+        })))
+        .mount(&mock_server)
+        .await;
 
-    let mut child = Command::new(binary)
-        .env("DEVIN_API_KEY", &api_key)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("Failed to start MCP server");
-
-    let mut stdin = child.stdin.take().unwrap();
-    let mut stdout = BufReader::new(child.stdout.take().unwrap());
-
-    // initialize + initialized
-    let _ = send_jsonrpc(
-        &mut stdin,
-        &mut stdout,
-        json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": { "name": "test", "version": "0.1.0" }
-            }
-        }),
-    )
-    .await;
-
-    let notif = serde_json::to_string(&json!({
-        "jsonrpc": "2.0",
-        "method": "notifications/initialized",
-        "params": {}
-    }))
-    .unwrap();
-    stdin.write_all(notif.as_bytes()).await.unwrap();
-    stdin.write_all(b"\n").await.unwrap();
-    stdin.flush().await.unwrap();
+    let (mut child, mut stdin, mut stdout) = spawn_and_initialize(&mock_server).await;
 
     // list_sessions
     let response = send_jsonrpc(
@@ -263,7 +258,12 @@ async fn test_mcp_list_sessions_live() {
     )
     .await;
 
-    assert!(response["result"]["content"][0]["text"].is_string());
+    let text = response["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("devin-list001"),
+        "Response should contain session ID: {}",
+        text
+    );
 
     child.kill().await.ok();
 }

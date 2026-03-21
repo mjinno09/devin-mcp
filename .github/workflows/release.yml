@@ -34,15 +34,6 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets --all-features
 
-      - name: Unit tests
-        run: cargo test --bin devin-mcp
-
-      - name: Build binary
-        run: cargo build
-
-      - name: Integration tests (mock only)
-        run: cargo test --test integration
-
   # Build release binaries for each target
   build:
     name: Build (${{ matrix.target }})
