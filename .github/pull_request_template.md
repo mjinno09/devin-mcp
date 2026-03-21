@@ -16,4 +16,3 @@ Implementation approach.
 - [ ] `cargo clippy` passes
 - [ ] `cargo test --bin devin-mcp` passes
 - [ ] Updated README if needed
-- [ ] Updated CHANGELOG if user-facing
