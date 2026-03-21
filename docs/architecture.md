@@ -2,18 +2,20 @@
 
 ## Overview
 
-```
-┌─────────────────┐  stdio (JSON-RPC)  ┌──────────────┐  HTTPS  ┌───────────┐
-│ Claude Code /   │◄──────────────────►│  devin-mcp   │◄──────►│ Devin API │
-│ Cursor / etc    │                    │ (MCP Server) │        │   (v1)    │
-└─────────────────┘                    └──────────────┘        └───────────┘
-   MCP Client                                │                       │
-                                             │                       │
-                                             ▼                       ▼
-                                         Stateless             ┌───────────┐
-                                       Fire & Forget           │  GitHub   │
-                                                               │   (PR)    │
-                                                               └───────────┘
+```mermaid
+graph LR
+    Client["Claude Code / Cursor / etc<br/>(MCP Client)"]
+    Server["devin-mcp<br/>(MCP Server)"]
+    API["Devin API<br/>(v1)"]
+    GitHub["GitHub<br/>(PR)"]
+
+    Client -- "stdio (JSON-RPC)" --> Server
+    Server -- "HTTPS" --> API
+    API -. "非同期で作業後" .-> GitHub
+
+    style Server fill:#f5f5f5,stroke:#333
+    style API fill:#e8f4fd,stroke:#333
+    style GitHub fill:#e6ffe6,stroke:#333
 ```
 
 ## Components
@@ -45,12 +47,20 @@ stdin/stdout で JSON-RPC 2.0 メッセージをやりとりする。
 
 ### create_session
 
-```
-1. MCP Client → stdin:  tools/call { name: "create_session", arguments: { prompt: "..." } }
-2. devin-mcp → Devin API: POST /v1/sessions { prompt: "..." }
-3. Devin API → devin-mcp: { session_id: "devin-xxx", status: "running", ... }
-4. devin-mcp → stdout: result { content: "Session: https://app.devin.ai/sessions/devin-xxx" }
-5. (Devin が非同期で作業 → 完了後 GitHub PR が作られる)
+```mermaid
+sequenceDiagram
+    participant Client as MCP Client
+    participant Server as devin-mcp
+    participant API as Devin API
+    participant GH as GitHub
+
+    Client->>Server: tools/call create_session { prompt: "..." }
+    Server->>API: POST /v1/sessions { prompt: "..." }
+    API-->>Server: { session_id: "devin-xxx", status: "running" }
+    Server-->>Client: Session URL: https://app.devin.ai/sessions/devin-xxx
+
+    Note over API,GH: Devin が非同期で作業
+    API--)GH: PR を作成
 ```
 
 ## Design Decisions
