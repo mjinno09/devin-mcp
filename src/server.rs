@@ -213,6 +213,10 @@ impl ServerHandler for DevinMcpServer {
                  - send_message: Send follow-up instructions to a session"
                     .into(),
             ),
+            capabilities: ServerCapabilities {
+                tools: Some(ToolsCapability::default()),
+                ..Default::default()
+            },
             ..Default::default()
         }
     }
