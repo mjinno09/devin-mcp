@@ -107,8 +107,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="${GITHUB_REF#refs/tags/}"
-          gh release create "${tag}" \
-            --title "${tag}" \
-            --generate-notes \
-            artifacts/*.tar.gz \
-            devin-mcp-installer.sh
+          if gh release view "${tag}" &>/dev/null; then
+            echo "Release ${tag} already exists, uploading artifacts..."
+            gh release upload "${tag}" --clobber \
+              artifacts/*.tar.gz \
+              devin-mcp-installer.sh
+          else
+            echo "Creating release ${tag}..."
+            gh release create "${tag}" \
+              --title "${tag}" \
+              --generate-notes \
+              artifacts/*.tar.gz \
+              devin-mcp-installer.sh
+          fi
