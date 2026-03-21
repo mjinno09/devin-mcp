@@ -27,7 +27,9 @@ async fn send_jsonrpc(
 }
 
 fn should_skip() -> bool {
-    std::env::var("DEVIN_API_KEY").is_err()
+    std::env::var("DEVIN_API_KEY")
+        .map(|v| v.is_empty())
+        .unwrap_or(true)
 }
 
 #[tokio::test]
@@ -117,6 +119,7 @@ async fn test_mcp_initialize_handshake() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn test_mcp_create_session_live() {
     if should_skip() {
         eprintln!("Skipping live test: DEVIN_API_KEY not set");
@@ -200,6 +203,7 @@ async fn test_mcp_create_session_live() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn test_mcp_list_sessions_live() {
     if should_skip() {
         eprintln!("Skipping live test: DEVIN_API_KEY not set");
