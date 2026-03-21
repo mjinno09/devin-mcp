@@ -15,7 +15,8 @@ An MCP (Model Context Protocol) server for creating and managing [Devin AI](http
 ## Install
 
 ```sh
-cargo install devin-mcp
+curl --proto '=https' --tlsv1.2 -LsSf \
+  https://github.com/mjinno09/devin-mcp/releases/latest/download/devin-mcp-installer.sh | sh
 ```
 
 ## Setup
