@@ -52,4 +52,3 @@ cargo clippy --all-targets     # Lint
 - Before starting a task, create a plan in `docs/plan/`
 - For architecture changes, write an ADR in `docs/adr/`
 - Run `cargo fmt` and `cargo clippy` before committing
-- Keep CHANGELOG.md updated for user-facing changes
