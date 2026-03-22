@@ -155,7 +155,7 @@ impl DevinMcpServer {
             .map_err(|e| internal_error(format!("Failed to list sessions: {}", e)))?;
 
         let lines: Vec<String> = sessions
-            .items
+            .sessions
             .iter()
             .map(|s| {
                 format!(
@@ -167,11 +167,9 @@ impl DevinMcpServer {
             })
             .collect();
 
-        let total = sessions.total.unwrap_or(sessions.items.len() as u64);
-
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "Sessions ({} total):\n{}",
-            total,
+            "Sessions ({} found):\n{}",
+            lines.len(),
             lines.join("\n")
         ))]))
     }
