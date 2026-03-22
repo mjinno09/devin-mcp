@@ -45,7 +45,9 @@ tar xzf "${tmpdir}/${archive}" -C "${tmpdir}"
 
 install_dir="${HOME}/.cargo/bin"
 mkdir -p "${install_dir}"
-cp "${tmpdir}/devin-mcp-${TAG}-${target}/devin-mcp" "${install_dir}/devin-mcp"
+# Use cat+redirect instead of cp to avoid inheriting macOS quarantine
+# extended attributes (com.apple.provenance) that can block execution.
+cat "${tmpdir}/devin-mcp-${TAG}-${target}/devin-mcp" > "${install_dir}/devin-mcp"
 chmod +x "${install_dir}/devin-mcp"
 
 echo ""
