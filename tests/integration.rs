@@ -225,7 +225,7 @@ async fn test_mcp_list_sessions() {
     Mock::given(method("GET"))
         .and(path("/sessions"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "items": [
+            "sessions": [
                 {
                     "session_id": "devin-list001",
                     "status": "finished",
@@ -234,8 +234,7 @@ async fn test_mcp_list_sessions() {
                     "updated_at": "2025-01-01T00:00:00.000000+00:00",
                     "messages": []
                 }
-            ],
-            "total": 1
+            ]
         })))
         .mount(&mock_server)
         .await;

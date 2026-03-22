@@ -49,8 +49,7 @@ pub struct PullRequest {
 #[derive(Deserialize, Debug)]
 pub struct SessionList {
     #[serde(default)]
-    pub items: Vec<Session>,
-    pub total: Option<u64>,
+    pub sessions: Vec<Session>,
 }
 
 impl DevinClient {
@@ -208,7 +207,7 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/sessions"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "items": [
+                "sessions": [
                     {
                         "session_id": "devin-001",
                         "status": "finished",
@@ -217,16 +216,15 @@ mod tests {
                         "updated_at": "2025-01-01T00:00:00.000000+00:00",
                         "messages": []
                     }
-                ],
-                "total": 1
+                ]
             })))
             .mount(&mock_server)
             .await;
 
         let list = client.list_sessions(10, 0).await.unwrap();
 
-        assert_eq!(list.items.len(), 1);
-        assert_eq!(list.items[0].session_id, "devin-001");
+        assert_eq!(list.sessions.len(), 1);
+        assert_eq!(list.sessions[0].session_id, "devin-001");
     }
 
     #[tokio::test]
