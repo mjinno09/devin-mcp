@@ -1,4 +1,6 @@
-use anyhow::Result;
+use std::time::Duration;
+
+use anyhow::{bail, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
@@ -52,10 +54,28 @@ pub struct SessionList {
     pub sessions: Vec<Session>,
 }
 
+/// session_id が安全な文字のみで構成されていることを検証する
+fn validate_session_id(session_id: &str) -> Result<()> {
+    if session_id.is_empty() {
+        bail!("session_id must not be empty");
+    }
+    if !session_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        bail!("session_id contains invalid characters");
+    }
+    Ok(())
+}
+
 impl DevinClient {
     pub fn new(api_key: String) -> Self {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .expect("failed to build HTTP client");
         Self {
-            client: Client::new(),
+            client,
             api_key,
             base_url: "https://api.devin.ai/v1".to_string(),
         }
@@ -78,6 +98,7 @@ impl DevinClient {
 
     /// セッション詳細取得
     pub async fn get_session(&self, session_id: &str) -> Result<Session> {
+        validate_session_id(session_id)?;
         let resp = self
             .client
             .get(format!("{}/sessions/{}", self.base_url, session_id))
@@ -107,6 +128,7 @@ impl DevinClient {
 
     /// メッセージ送信
     pub async fn send_message(&self, session_id: &str, message: &str) -> Result<Session> {
+        validate_session_id(session_id)?;
         let resp = self
             .client
             .post(format!("{}/sessions/{}", self.base_url, session_id))
@@ -130,11 +152,8 @@ mod tests {
     /// テスト用のクライアントを MockServer に向けて生成
     async fn setup() -> (MockServer, DevinClient) {
         let mock_server = MockServer::start().await;
-        let client = DevinClient {
-            client: Client::new(),
-            api_key: "test-api-key".to_string(),
-            base_url: mock_server.uri(),
-        };
+        let mut client = DevinClient::new("test-api-key".to_string());
+        client.base_url = mock_server.uri();
         (mock_server, client)
     }
 
@@ -271,5 +290,15 @@ mod tests {
             .await;
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_session_id() {
+        assert!(validate_session_id("devin-abc123").is_ok());
+        assert!(validate_session_id("devin_abc_123").is_ok());
+        assert!(validate_session_id("").is_err());
+        assert!(validate_session_id("../admin").is_err());
+        assert!(validate_session_id("id with spaces").is_err());
+        assert!(validate_session_id("id/path").is_err());
     }
 }
