@@ -134,6 +134,85 @@ jobs:
             artifacts/*.tar.gz \
             devin-mcp-installer.sh
 
+  # Update Homebrew tap Formula
+  update-homebrew:
+    name: Update Homebrew Formula
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compute SHA256 for release assets
+        run: |
+          tag="${{ github.event.release.tag_name }}"
+          version="${tag#v}"
+          base="https://github.com/mjinno09/devin-mcp/releases/download/${tag}"
+
+          curl -sL "${base}/devin-mcp-${tag}-aarch64-apple-darwin.tar.gz" -o arm64.tar.gz
+          curl -sL "${base}/devin-mcp-${tag}-x86_64-apple-darwin.tar.gz" -o x64_mac.tar.gz
+          curl -sL "${base}/devin-mcp-${tag}-x86_64-unknown-linux-gnu.tar.gz" -o x64_linux.tar.gz
+
+          echo "SHA_ARM64=$(sha256sum arm64.tar.gz | awk '{print $1}')" >> "$GITHUB_ENV"
+          echo "SHA_X64_MAC=$(sha256sum x64_mac.tar.gz | awk '{print $1}')" >> "$GITHUB_ENV"
+          echo "SHA_X64_LINUX=$(sha256sum x64_linux.tar.gz | awk '{print $1}')" >> "$GITHUB_ENV"
+          echo "VERSION=${version}" >> "$GITHUB_ENV"
+
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@v4
+        with:
+          repository: mjinno09/homebrew-devin-mcp
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Update Formula
+        run: |
+          cat > tap/Formula/devin-mcp.rb << 'FORMULA'
+          class DevinMcp < Formula
+            desc "MCP server for creating and managing Devin AI sessions"
+            homepage "https://github.com/mjinno09/devin-mcp"
+            version "__VERSION__"
+            license "MIT"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/mjinno09/devin-mcp/releases/download/v#{version}/devin-mcp-v#{version}-aarch64-apple-darwin.tar.gz"
+                sha256 "__SHA_ARM64__"
+              else
+                url "https://github.com/mjinno09/devin-mcp/releases/download/v#{version}/devin-mcp-v#{version}-x86_64-apple-darwin.tar.gz"
+                sha256 "__SHA_X64_MAC__"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.intel?
+                url "https://github.com/mjinno09/devin-mcp/releases/download/v#{version}/devin-mcp-v#{version}-x86_64-unknown-linux-gnu.tar.gz"
+                sha256 "__SHA_X64_LINUX__"
+              end
+            end
+
+            def install
+              bin.install "devin-mcp"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/devin-mcp --version")
+            end
+          end
+          FORMULA
+
+          sed -i "s/__VERSION__/${VERSION}/g" tap/Formula/devin-mcp.rb
+          sed -i "s/__SHA_ARM64__/${SHA_ARM64}/g" tap/Formula/devin-mcp.rb
+          sed -i "s/__SHA_X64_MAC__/${SHA_X64_MAC}/g" tap/Formula/devin-mcp.rb
+          sed -i "s/__SHA_X64_LINUX__/${SHA_X64_LINUX}/g" tap/Formula/devin-mcp.rb
+
+      - name: Commit and push Formula
+        working-directory: tap
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/devin-mcp.rb
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "Update devin-mcp to ${VERSION}"
+          git push origin main
+
   # Commit updated Cargo.toml and Cargo.lock back to main
   update-version:
     name: Commit Version to main
