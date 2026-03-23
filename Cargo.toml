@@ -1,6 +1,6 @@
 [package]
 name = "devin-mcp"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 license = "MIT"
 description = "MCP server for creating and managing Devin AI sessions from Claude Code, Cursor, and other MCP clients"
