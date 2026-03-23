@@ -1,6 +1,6 @@
 # Builds release artifacts when a GitHub Release is published,
 # then uploads binaries and install script to the release.
-# Automatically syncs Cargo.toml version from the vX.Y.Z tag.
+# Version is derived from the git tag at build time (Cargo.toml stays at 0.0.0).
 
 name: Release
 
@@ -19,14 +19,15 @@ jobs:
   ci:
     name: CI Gate
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Validate tag format
         run: |
-          tag="${{ github.event.release.tag_name }}"
-          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Tag '${tag}' does not match vX.Y.Z format"
+          if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '${TAG}' does not match vX.Y.Z format"
             exit 1
           fi
 
@@ -38,8 +39,7 @@ jobs:
 
       - name: Sync Cargo.toml version with tag
         run: |
-          tag="${{ github.event.release.tag_name }}"
-          version="${tag#v}"
+          version="${TAG#v}"
           sed -i "s/^version = \".*\"/version = \"${version}\"/" Cargo.toml
           echo "Cargo.toml version set to ${version}"
 
@@ -54,6 +54,8 @@ jobs:
     name: Build (${{ matrix.target }})
     needs: ci
     runs-on: ${{ matrix.os }}
+    env:
+      TAG: ${{ github.event.release.tag_name }}
     strategy:
       matrix:
         include:
@@ -77,8 +79,7 @@ jobs:
       - name: Sync Cargo.toml version with tag
         shell: bash
         run: |
-          tag="${{ github.event.release.tag_name }}"
-          version="${tag#v}"
+          version="${TAG#v}"
           sed -i'' -e "s/^version = \".*\"/version = \"${version}\"/" Cargo.toml
           echo "Cargo.toml version set to ${version}"
 
@@ -88,8 +89,7 @@ jobs:
       - name: Package binary
         shell: bash
         run: |
-          tag="${{ github.event.release.tag_name }}"
-          archive="devin-mcp-${tag}-${{ matrix.target }}"
+          archive="devin-mcp-${TAG}-${{ matrix.target }}"
           mkdir -p "${archive}"
           cp "target/${{ matrix.target }}/release/devin-mcp" "${archive}/"
           cp README.md LICENSE "${archive}/"
@@ -107,6 +107,8 @@ jobs:
     name: Upload Release Assets
     needs: build
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name }}
     steps:
       - uses: actions/checkout@v4
 
@@ -118,19 +120,17 @@ jobs:
 
       - name: Prepare install script
         run: |
-          tag="${{ github.event.release.tag_name }}"
           repo="${GITHUB_REPOSITORY}"
           cp scripts/installer.sh devin-mcp-installer.sh
           sed -i "s|__REPO__|${repo}|g" devin-mcp-installer.sh
-          sed -i "s|__TAG__|${tag}|g" devin-mcp-installer.sh
+          sed -i "s|__TAG__|${TAG}|g" devin-mcp-installer.sh
           chmod +x devin-mcp-installer.sh
 
       - name: Upload Release Assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          tag="${{ github.event.release.tag_name }}"
-          gh release upload "${tag}" --clobber \
+          gh release upload "${TAG}" --clobber \
             artifacts/*.tar.gz \
             devin-mcp-installer.sh
 
@@ -139,16 +139,17 @@ jobs:
     name: Update Homebrew Formula
     needs: release
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name }}
     steps:
       - name: Compute SHA256 for release assets
         run: |
-          tag="${{ github.event.release.tag_name }}"
-          version="${tag#v}"
-          base="https://github.com/mjinno09/devin-mcp/releases/download/${tag}"
+          version="${TAG#v}"
+          base="https://github.com/mjinno09/devin-mcp/releases/download/${TAG}"
 
-          curl -sL "${base}/devin-mcp-${tag}-aarch64-apple-darwin.tar.gz" -o arm64.tar.gz
-          curl -sL "${base}/devin-mcp-${tag}-x86_64-apple-darwin.tar.gz" -o x64_mac.tar.gz
-          curl -sL "${base}/devin-mcp-${tag}-x86_64-unknown-linux-gnu.tar.gz" -o x64_linux.tar.gz
+          curl -sL "${base}/devin-mcp-${TAG}-aarch64-apple-darwin.tar.gz" -o arm64.tar.gz
+          curl -sL "${base}/devin-mcp-${TAG}-x86_64-apple-darwin.tar.gz" -o x64_mac.tar.gz
+          curl -sL "${base}/devin-mcp-${TAG}-x86_64-unknown-linux-gnu.tar.gz" -o x64_linux.tar.gz
 
           echo "SHA_ARM64=$(sha256sum arm64.tar.gz | awk '{print $1}')" >> "$GITHUB_ENV"
           echo "SHA_X64_MAC=$(sha256sum x64_mac.tar.gz | awk '{print $1}')" >> "$GITHUB_ENV"
@@ -211,38 +212,4 @@ jobs:
           git add Formula/devin-mcp.rb
           git diff --cached --quiet && echo "No changes" && exit 0
           git commit -m "Update devin-mcp to ${VERSION}"
-          git push origin main
-
-  # Commit updated Cargo.toml and Cargo.lock back to main
-  update-version:
-    name: Commit Version to main
-    needs: release
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Sync Cargo.toml version with tag
-        run: |
-          tag="${{ github.event.release.tag_name }}"
-          version="${tag#v}"
-          sed -i "s/^version = \".*\"/version = \"${version}\"/" Cargo.toml
-          echo "Cargo.toml version set to ${version}"
-
-      - name: Update Cargo.lock
-        run: cargo update --workspace
-
-      - name: Commit and push
-        run: |
-          tag="${{ github.event.release.tag_name }}"
-          version="${tag#v}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Cargo.toml Cargo.lock
-          git diff --cached --quiet && echo "No changes to commit" && exit 0
-          git commit -m "chore: bump version to ${version}"
           git push origin main
