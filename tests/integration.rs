@@ -173,11 +173,8 @@ async fn test_mcp_create_session() {
         .and(path("/sessions"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "session_id": "devin-integ123",
-            "status": "running",
-            "title": "Integration test session",
-            "created_at": "2025-01-01T00:00:00.000000+00:00",
-            "updated_at": "2025-01-01T00:00:00.000000+00:00",
-            "messages": []
+            "url": "https://app.devin.ai/sessions/integ123",
+            "is_new_session": true
         })))
         .mount(&mock_server)
         .await;
@@ -210,7 +207,7 @@ async fn test_mcp_create_session() {
         content
             .as_str()
             .unwrap()
-            .contains("https://app.devin.ai/sessions/devin-integ123"),
+            .contains("https://app.devin.ai/sessions/integ123"),
         "Response should contain session URL: {}",
         content
     );

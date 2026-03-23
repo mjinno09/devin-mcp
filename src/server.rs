@@ -15,7 +15,10 @@ use crate::devin_client::{CreateSessionRequest, DevinClient};
 pub struct CreateSessionParams {
     /// タスクの説明。Devin に実行させたい作業内容を具体的に記述する
     pub prompt: String,
-    /// セッションに付けるタグ（オプション）
+    /// セッションのタイトル（オプション、省略時は自動生成）
+    #[serde(default)]
+    pub title: Option<String>,
+    /// セッションに付けるタグ（オプション、最大50個）
     #[serde(default)]
     pub tags: Option<Vec<String>>,
     /// ACU 上限（オプション、デフォルトなし）
@@ -24,6 +27,15 @@ pub struct CreateSessionParams {
     /// Playbook ID（オプション）
     #[serde(default)]
     pub playbook_id: Option<String>,
+    /// Snapshot ID（オプション）
+    #[serde(default)]
+    pub snapshot_id: Option<String>,
+    /// 冪等リクエスト（オプション、デフォルト: false）
+    #[serde(default)]
+    pub idempotent: Option<bool>,
+    /// 非公開セッション（オプション、デフォルト: false）
+    #[serde(default)]
+    pub unlisted: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -85,28 +97,27 @@ impl DevinMcpServer {
         &self,
         Parameters(params): Parameters<CreateSessionParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let session = self
+        let resp = self
             .client
             .create_session(CreateSessionRequest {
                 prompt: params.prompt,
+                title: params.title,
                 tags: params.tags,
                 max_acu_limit: params.max_acu_limit,
                 playbook_id: params.playbook_id,
+                snapshot_id: params.snapshot_id,
+                idempotent: params.idempotent,
+                unlisted: params.unlisted,
             })
             .await
             .map_err(|e| internal_error(format!("Failed to create session: {}", e)))?;
 
-        let url = format!("https://app.devin.ai/sessions/{}", session.session_id);
-        let title = session.title.unwrap_or_default();
-
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Devin session created.\n\
-             - Session: {url}\n\
-             - ID: {}\n\
-             - Title: {title}\n\
-             - Status: {}\n\n\
+             - Session: {}\n\
+             - ID: {}\n\n\
              Devin is working on it. A PR will be created when done.",
-            session.session_id, session.status
+            resp.url, resp.session_id
         ))]))
     }
 
@@ -125,17 +136,27 @@ impl DevinMcpServer {
             .map_err(|e| internal_error(format!("Failed to get session: {}", e)))?;
 
         let url = format!("https://app.devin.ai/sessions/{}", session.session_id);
+        let status_detail = session
+            .status_enum
+            .as_deref()
+            .map(|s| format!(" ({s})"))
+            .unwrap_or_default();
         let pr_info = session
             .pull_request
             .as_ref()
             .map(|pr| format!("\n- PR: {}", pr.url))
             .unwrap_or_default();
+        let tags_info = if session.tags.is_empty() {
+            String::new()
+        } else {
+            format!("\n- Tags: {}", session.tags.join(", "))
+        };
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Session: {url}\n\
              - ID: {}\n\
-             - Status: {}\n\
-             - Title: {}{pr_info}",
+             - Status: {}{status_detail}\n\
+             - Title: {}{pr_info}{tags_info}",
             session.session_id,
             session.status,
             session.title.as_deref().unwrap_or("(untitled)"),
@@ -182,19 +203,16 @@ impl DevinMcpServer {
         &self,
         Parameters(params): Parameters<SendMessageParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let session = self
-            .client
+        self.client
             .send_message(&params.session_id, &params.message)
             .await
             .map_err(|e| internal_error(format!("Failed to send message: {}", e)))?;
 
-        let url = format!("https://app.devin.ai/sessions/{}", session.session_id);
+        let url = format!("https://app.devin.ai/sessions/{}", params.session_id);
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Message sent to session.\n\
-             - Session: {url}\n\
-             - Status: {}",
-            session.status
+             - Session: {url}",
         ))]))
     }
 }
@@ -238,28 +256,29 @@ mod tests {
             .and(path("/sessions"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "session_id": "devin-new123",
-                "status": "running",
-                "title": "Fix bug #42",
-                "created_at": "2025-01-01T00:00:00.000000+00:00",
-                "updated_at": "2025-01-01T00:00:00.000000+00:00",
-                "messages": []
+                "url": "https://app.devin.ai/sessions/new123",
+                "is_new_session": null
             })))
             .mount(&mock_server)
             .await;
 
         let params = CreateSessionParams {
             prompt: "Write unit tests for auth module".to_string(),
+            title: None,
             tags: Some(vec!["testing".to_string()]),
             max_acu_limit: Some(3),
             playbook_id: None,
+            snapshot_id: None,
+            idempotent: None,
+            unlisted: None,
         };
 
         let result = server.create_session(Parameters(params)).await.unwrap();
 
         let text_content = result.content[0].as_text().expect("Expected text content");
         let text = &text_content.text;
-        assert!(text.contains("https://app.devin.ai/sessions/devin-new123"));
-        assert!(text.contains("running"));
+        assert!(text.contains("https://app.devin.ai/sessions/new123"));
+        assert!(text.contains("devin-new123"));
     }
 
     #[tokio::test]
@@ -274,9 +293,13 @@ mod tests {
 
         let params = CreateSessionParams {
             prompt: "test".to_string(),
+            title: None,
             tags: None,
             max_acu_limit: None,
             playbook_id: None,
+            snapshot_id: None,
+            idempotent: None,
+            unlisted: None,
         };
 
         let result = server.create_session(Parameters(params)).await;
