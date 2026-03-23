@@ -7,12 +7,9 @@ use tracing_subscriber::EnvFilter;
 
 use crate::server::DevinMcpServer;
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    // --help フラグ対応
-    if std::env::args().any(|a| a == "--help" || a == "-h") {
-        println!(
-            "{name} {version}
+fn help_text() -> String {
+    format!(
+        "{name} {version}
 {description}
 
 USAGE:
@@ -34,10 +31,17 @@ TOOLS:
     send_message      Send a message to a session
 
 This server communicates via MCP (Model Context Protocol) over stdio.",
-            name = env!("CARGO_PKG_NAME"),
-            version = env!("CARGO_PKG_VERSION"),
-            description = env!("CARGO_PKG_DESCRIPTION"),
-        );
+        name = env!("CARGO_PKG_NAME"),
+        version = env!("CARGO_PKG_VERSION"),
+        description = env!("CARGO_PKG_DESCRIPTION"),
+    )
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    // --help フラグ対応
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        println!("{}", help_text());
         return Ok(());
     }
 
@@ -45,6 +49,20 @@ This server communicates via MCP (Model Context Protocol) over stdio.",
     if std::env::args().any(|a| a == "--version" || a == "-V") {
         println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
         return Ok(());
+    }
+
+    // 未知の引数をチェック
+    let unknown_args: Vec<String> = std::env::args()
+        .skip(1)
+        .filter(|a| a != "--help" && a != "-h" && a != "--version" && a != "-V")
+        .collect();
+    if !unknown_args.is_empty() {
+        eprintln!(
+            "error: unknown argument(s): {}\n\n{}",
+            unknown_args.join(", "),
+            help_text(),
+        );
+        std::process::exit(1);
     }
 
     // ログは必ず stderr へ（stdout は JSON-RPC 専用）
