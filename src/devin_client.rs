@@ -15,11 +15,19 @@ pub struct DevinClient {
 pub struct CreateSessionRequest {
     pub prompt: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_acu_limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub playbook_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub snapshot_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub idempotent: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unlisted: Option<bool>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -30,6 +38,13 @@ pub struct Session {
     pub title: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    pub status_enum: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    pub playbook_id: Option<String>,
+    pub snapshot_id: Option<String>,
+    pub structured_output: Option<serde_json::Value>,
+    pub requesting_user_email: Option<String>,
     #[serde(default)]
     pub messages: Vec<SessionMessage>,
     pub pull_request: Option<PullRequest>,
@@ -40,11 +55,22 @@ pub struct Session {
 pub struct SessionMessage {
     #[serde(rename = "type")]
     pub msg_type: String,
+    pub event_id: Option<String>,
     pub message: Option<String>,
+    pub timestamp: Option<String>,
+    pub username: Option<String>,
+    pub origin: Option<String>,
+    pub user_id: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct PullRequest {
+    pub url: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct CreateSessionResponse {
+    pub session_id: String,
     pub url: String,
 }
 
@@ -82,7 +108,7 @@ impl DevinClient {
     }
 
     /// セッション作成
-    pub async fn create_session(&self, req: CreateSessionRequest) -> Result<Session> {
+    pub async fn create_session(&self, req: CreateSessionRequest) -> Result<CreateSessionResponse> {
         let resp = self
             .client
             .post(format!("{}/sessions", self.base_url))
@@ -91,7 +117,7 @@ impl DevinClient {
             .send()
             .await?
             .error_for_status()?
-            .json::<Session>()
+            .json::<CreateSessionResponse>()
             .await?;
         Ok(resp)
     }
@@ -127,19 +153,16 @@ impl DevinClient {
     }
 
     /// メッセージ送信
-    pub async fn send_message(&self, session_id: &str, message: &str) -> Result<Session> {
+    pub async fn send_message(&self, session_id: &str, message: &str) -> Result<()> {
         validate_session_id(session_id)?;
-        let resp = self
-            .client
-            .post(format!("{}/sessions/{}", self.base_url, session_id))
+        self.client
+            .post(format!("{}/sessions/{}/message", self.base_url, session_id))
             .bearer_auth(&self.api_key)
             .json(&serde_json::json!({ "message": message }))
             .send()
             .await?
-            .error_for_status()?
-            .json::<Session>()
-            .await?;
-        Ok(resp)
+            .error_for_status()?;
+        Ok(())
     }
 }
 
@@ -166,27 +189,28 @@ mod tests {
             .and(header("Authorization", "Bearer test-api-key"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "session_id": "devin-abc123",
-                "status": "running",
-                "title": "Test session",
-                "created_at": "2025-01-01T00:00:00.000000+00:00",
-                "updated_at": "2025-01-01T00:00:00.000000+00:00",
-                "messages": []
+                "url": "https://app.devin.ai/sessions/abc123",
+                "is_new_session": null
             })))
             .mount(&mock_server)
             .await;
 
-        let session = client
+        let resp = client
             .create_session(CreateSessionRequest {
                 prompt: "Fix bug #42".to_string(),
+                title: None,
                 tags: Some(vec!["test".to_string()]),
                 max_acu_limit: None,
                 playbook_id: None,
+                snapshot_id: None,
+                idempotent: None,
+                unlisted: None,
             })
             .await
             .unwrap();
 
-        assert_eq!(session.session_id, "devin-abc123");
-        assert_eq!(session.status, "running");
+        assert_eq!(resp.session_id, "devin-abc123");
+        assert_eq!(resp.url, "https://app.devin.ai/sessions/abc123");
     }
 
     #[tokio::test]
@@ -251,23 +275,15 @@ mod tests {
         let (mock_server, client) = setup().await;
 
         Mock::given(method("POST"))
-            .and(path("/sessions/devin-abc123"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "session_id": "devin-abc123",
-                "status": "running",
-                "title": "Test session",
-                "created_at": "2025-01-01T00:00:00.000000+00:00",
-                "updated_at": "2025-01-01T00:02:00.000000+00:00",
-                "messages": []
-            })))
+            .and(path("/sessions/devin-abc123/message"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!(null)))
             .mount(&mock_server)
             .await;
 
-        let session = client
+        client
             .send_message("devin-abc123", "Also fix CSS")
             .await
             .unwrap();
-        assert_eq!(session.status, "running");
     }
 
     #[tokio::test]
@@ -283,9 +299,13 @@ mod tests {
         let result = client
             .create_session(CreateSessionRequest {
                 prompt: "test".to_string(),
+                title: None,
                 tags: None,
                 max_acu_limit: None,
                 playbook_id: None,
+                snapshot_id: None,
+                idempotent: None,
+                unlisted: None,
             })
             .await;
 
