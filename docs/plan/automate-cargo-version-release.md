@@ -3,25 +3,25 @@
 ## Goal
 
 When a GitHub Release is published with a `vX.Y.Z` tag, automatically:
-1. Extract the version from the tag
-2. Update `Cargo.toml` version field
+1. Validate tag format (`vX.Y.Z`)
+2. Extract version from the tag and patch `Cargo.toml` in each job
 3. Build release binaries with the correct version
-4. Publish to crates.io via `cargo publish`
+4. Upload release assets to GitHub Release
+5. Commit updated `Cargo.toml` and `Cargo.lock` back to `main`
 
 ## Changes
 
 ### `.github/workflows/release.yml`
 
-- Add a `sync-version` step at the start of the CI gate job to validate the tag format
-- In each build matrix job, inject `sed` to update `Cargo.toml` before `cargo build`
-- Add a new `publish` job that:
-  - Extracts version from tag
-  - Updates `Cargo.toml`
-  - Runs `cargo publish`
-  - Requires `CARGO_REGISTRY_TOKEN` secret
+- **Tag validation**: CI gate rejects tags not matching `vX.Y.Z`
+- **Version sync**: Each job patches `Cargo.toml` in-place via `sed` before build
+- **`update-version` job**: After release assets are uploaded, checks out `main`, updates `Cargo.toml` + `Cargo.lock`, and commits/pushes as `github-actions[bot]`
 
-### Why not commit the version change?
+### Flow
 
-Committing during CI creates merge noise and circular triggers.
-Instead, we patch `Cargo.toml` in-place during the workflow run only.
-The source-of-truth for the version is the git tag.
+```
+Tag (vX.Y.Z) → Release published
+  → CI Gate (validate tag + sync version + clippy/fmt)
+  → Build (3 targets, version synced) → Upload assets
+  → Commit version to main (Cargo.toml + Cargo.lock)
+```

@@ -1,6 +1,6 @@
 # Builds release artifacts when a GitHub Release is published,
 # then uploads binaries and install script to the release.
-# Also publishes the crate to crates.io.
+# Automatically syncs Cargo.toml version from the vX.Y.Z tag.
 
 name: Release
 
@@ -134,17 +134,18 @@ jobs:
             artifacts/*.tar.gz \
             devin-mcp-installer.sh
 
-  # Publish crate to crates.io
-  publish:
-    name: Publish to crates.io
-    needs: ci
+  # Commit updated Cargo.toml and Cargo.lock back to main
+  update-version:
+    name: Commit Version to main
+    needs: release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
 
       - name: Sync Cargo.toml version with tag
         run: |
@@ -153,7 +154,16 @@ jobs:
           sed -i "s/^version = \".*\"/version = \"${version}\"/" Cargo.toml
           echo "Cargo.toml version set to ${version}"
 
-      - name: Publish
-        run: cargo publish
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Update Cargo.lock
+        run: cargo update --workspace
+
+      - name: Commit and push
+        run: |
+          tag="${{ github.event.release.tag_name }}"
+          version="${tag#v}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml Cargo.lock
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "chore: bump version to ${version}"
+          git push origin main
