@@ -17,7 +17,7 @@ An MCP (Model Context Protocol) server for creating and managing [Devin AI](http
 ### Homebrew (recommended)
 
 ```sh
-brew install mjinno09/devin-mcp/devin-mcp
+brew install mjinno09/tap/devin-mcp
 ```
 
 ### Shell script
